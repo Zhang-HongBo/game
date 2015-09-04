@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>俄罗斯方块</title>
+	
+    <meta http-equiv="keywords" content="keyword1,keyword2,keyword3">
+    <meta http-equiv="description" content="this is my page">
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    
+    <!--<link rel="stylesheet" type="text/css" href="./styles.css">-->
+    
+    <style type="text/css">
+    	body{
+    		margin:0px;
+    	}
+    	#main{
+    		position:relative;
+    		width:100%;
+    		height:100%;
+    		background-color:#aaa;
+    	}
+    	#game{
+    		position:relative;
+    		width:400px;
+    		height:610px;
+    		left:35%;
+    		top:5px;
+    		border:1px solid black;
+    		background-color:#000;
+    	}
+    	#game>table{
+    		position:relative;
+    		width:240px;
+    		height:600px;
+    		top:5px;
+    		left:10px;
+    		background-color: #333;
+    		float:left;border-spacing: 0px;
+    	}
+    	#game>#info{
+    		position:relative;
+    		width:130px;
+    		left:20px;
+    		top:5px;
+    		float:left;
+    		height:600px;
+    		background-color:#ccf;
+    	}
+    	#next{
+    		position:relative;
+    		width:120px;
+    		left:5px;
+    		top:20px;
+    		height:120px;
+    		border:1px black solid;
+    		border-spacing:1px;
+    		background-color: #666;
+    	}
+    	td{
+    		border:1px #333 solid;
+    	}   	
+    	#start,#stop{
+    		position:relative;
+    		width:60px;
+    		left:35px;
+    		top:160px;
+    		height:30px;
+    		background-color: #f80;
+    		cursor: pointer;
+    		text-align: center;
+    		font-weight: bold;
+    		font-size: 20px;
+    		border:1px solid black;
+    		border-radius:5px 5px 5px 5px;
+    	}
+    	#stop{
+    		top:170px;
+    	}
+    	#foot{
+    		position:relative;
+	    	width:100%;
+			height:25px;
+			background-color:#069;
+			text-align:center;
+			margin-top: 10px;
+		}
+    </style>
+    <script type="text/javascript" src="jquery-1.4.3.js"></script>
+	<script type="text/javascript">
+		//列，行
+		var col=8,row=20;
+		//下落时间间隔,分数，等级
+		var time=1000,score=0,level=1;
+		//每次加分数，每eachLevel分升一级
+		var eachScore=10,eachLevel=500;
+		//每个格子的边长, 背景颜色
+		var cellW,bColor;
+		// 记录所有格子的数组，
+		var cell=new Array(row);  //cell[i]=new Array(col);
+		// 标记格子是否已被实体填充
+		var vis=new Array(row);  //vis[i]=new Array(col);
+		//被填充的格子的最高行，用于判断是否到达顶端
+		var highLine=row-1;
+		//当前的实体，下一个实体
+		var curr,next;
+		//当前setTimeout()函数的返回值
+		var timeoutId;
+		//可移动控制变量
+		var canLeft=true,canRight=true,canRotate=true,canDown=true;
+		//是否可以执行go()，游戏是否正在运行
+		var canGo=true,onStart=false;
+		$(document).ready(function(){
+			bColor=$("#game>table").css("background-color");
+			$("body").width(window.width); 
+			$("body").height(window.height);
+			//计算格子的边长
+			cellW=parseFloat($("table").width())/col;
+			
+			$("#start,#stop").mouseover(function(){
+				$(this).css("background-color","red");
+			}).mouseout(function(){
+				$(this).css("background-color","#f80");
+			});
+			//开始按钮监听
+			$("#start").click(function(){
+				if(timeoutId!=undefined)clearTimeout(timeoutId);
+				gameInit();
+				curr=create();
+				next=create();
+				remain();
+				$("#stop").html("stop");	
+				onStart=true;
+				go();
+			});
+			//暂停或继续按钮监听
+			$("#stop").click(function(){
+				//如果游戏没有正在运行，该按钮无效
+				if(!onStart)return;
+				if($(this).html()==="stop"){
+					canLeft=canRight=canRotate=canDown=canGo=false;
+					$(this).html("go");
+					if(timeoutId!=undefined)clearTimeout(timeoutId);
+				}else{
+					canLeft=canRight=canRotate=canDown=canGo=true;
+					$(this).html("stop");
+					go();
+				}
+			});
+			//按键控制
+			$(window).keydown(function(event){
+	    		if(event.keyCode==38&&canRotate) rotate(curr);
+	    		if(event.keyCode==37&&canLeft) left();
+	    		if(event.keyCode==39&&canRight) right();
+	    		if(event.keyCode==40&&canDown) down();
+	    		return false;
+    		});
+		});
+		//游戏初始化
+		function gameInit(){
+			time=1000;score=0;level=1;highLine=row-1;
+			$("#score").html(score);
+			$("#level").html(level);
+			canLeft=canRight=canRotate=canDown=canGo=true;
+			//游戏主界面初始化
+			var t=$("#game>table").empty();
+			for(var i=0;i<row;i++){
+				var tr=$("<tr></tr>");
+				cell[i]=new Array(col);
+				vis[i]=new Array(col);
+				for(var j=0;j<col;j++){
+					cell[i][j]=$("<td></td>").width(cellW).height(cellW-5)
+					.css("background-color",bColor);
+					tr.append(cell[i][j]);
+					vis[i][j]=false;
+				}
+				t.append(tr);
+			}
+			//游戏提示界面初始化
+			var t2=$("#next").empty();
+			for(var i=0;i<4;i++){
+				var tr=$("<tr></tr>");
+				for(var j=0;j<4;j++){
+					var td=$("<td></td>").width(cellW).height(cellW-5)
+					.css("background-color",$("#next").css("background-color"));
+					tr.append(td);
+				}
+				t2.append(tr);
+			}
+		}
+		//游戏自动运行控制，实体自动下落
+		function go(){
+			if(!canDown){
+				canLeft=canRight=canRotate=false;
+				//标记被实体占了的格子
+				for(var i in curr.body){
+					if(curr.body[i].x>=0){
+						vis[curr.body[i].x][curr.body[i].y]=true;
+						highLine=Math.min(highLine,curr.body[i].x);
+					}
+				}
+				clear();
+				//判断游戏是否结束
+				if(highLine==0){
+					alert("gameover");
+					onStart=canGo=false;			
+					return;
+				}
+				//将下一个实体赋值给当前实体
+				curr=next;
+				//新建下一个实体
+				next=create();
+				//提示界面，显示下一个实体
+				remain();
+			}else{
+				down();
+			}
+			if(canGo)timeoutId=setTimeout(go,time);
+		}
+		//给格子上色
+		function paintCell(point, color){
+			if(point.x>=0&&point.x<row&&point.y>=0&&point.y<col){
+				cell[point.x][point.y].css("background-color",color);
+			}
+		};
+		//随机新生成一个实体
+		function create(){
+			
+			var t=Math.floor(Math.random()*structs.length);
+			var c;
+			if(structs[t].center!=undefined)c={x:structs[t].center.x,y:structs[t].center.y,};
+			var b=new Array(structs[t].body.length);
+			for(var i=0;i<b.length;i++){
+				b[i]={x:structs[t].body[i].x,y:structs[t].body[i].y,};
+			}
+			//复制对象
+			var o={
+				body:b,
+				color:structs[t].color,
+				center:c,
+				reversible:structs[t].reversible,
+			};
+			//随机旋转对象
+			if(o.center!=undefined){
+				var n=Math.floor(Math.random()*4);
+				while(n--)rotate(o,true);
+			}
+			canLeft=true;
+			canRight=true;
+			canDown=true;
+			canRotate=true;
+			return o;
+		}
+		//下落
+		function down(){
+			for(var i in curr.body){
+				paintCell(curr.body[i],bColor);				
+				curr.body[i].x++;
+			}
+			if(curr.center!=undefined)curr.center.x++;
+			for(var i in curr.body){
+				paintCell(curr.body[i],curr.color);				
+			}
+			canMove();
+		}
+		//左移
+		function left(){
+			//将实体之前的位置的颜色全部设为背景颜色
+			for(var i in curr.body){
+				paintCell(curr.body[i],bColor);
+				//实体的各个点移动
+				curr.body[i].y--;
+			}
+			//实体的中心移动
+			if(curr.center!=undefined)curr.center.y--;
+			//将实体移动后的位置的颜色全部设为该实体的颜色
+			for(var i in curr.body){
+				paintCell(curr.body[i],curr.color);
+			}
+			canMove();
+		}
+		//右移
+		function right(){
+			for(var i in curr.body){
+				paintCell(curr.body[i],bColor);				
+				curr.body[i].y++;
+			}
+			if(curr.center!=undefined)curr.center.y++;
+			for(var i in curr.body){
+				paintCell(curr.body[i],curr.color);
+			}
+			canMove();
+		}
+		//旋转
+		//s要旋转的实体
+		//flag 判断旋转后，是否执行canMove(),只有为true是执行
+		function rotate(s,flag){
+			for(var i in s.body){
+				paintCell(s.body[i],bColor);
+				var dx=s.body[i].x-s.center.x;
+				var dy=s.body[i].y-s.center.y;
+				if(s.reversible==undefined||!s.reversible){
+					//顺时针旋转
+					s.body[i].x=s.center.x+dy;
+					s.body[i].y=s.center.y-dx;					
+				}else{
+					//你是针旋转
+					s.body[i].x=s.center.x-dy;
+					s.body[i].y=s.center.y+dx;
+				};
+			}
+			if(s.reversible!=undefined)s.reversible=!s.reversible;
+			for(var i in s.body){
+				paintCell(s.body[i],s.color);
+			}
+			if(flag!=true)canMove();
+		}
+		//判断是否执行各种移动操作，并改变移动控制变量的值
+		function canMove(){
+			canDown=true;
+			canLeft=true;
+			canRight=true;
+			canRotate=true;
+			for(var i in curr.body){
+				//x<0时为缓冲区，
+				//在缓冲区时
+				if(curr.body[i].x<0){
+					//判断是否可右移
+					if(curr.body[i].y+1>=col)canRight=false;
+					//判断是否可左移
+					if(curr.body[i].y<=0)canLeft=false;
+					//判断是否可旋转
+					if(curr.center==undefined){canRotate=false;continue;}
+					var dx=curr.body[i].x-curr.center.x;
+					var dy=curr.body[i].y-curr.center.y;
+					if(curr.reversible!=undefined&&curr.reversible){
+						dy=-dy;dx=-dx;
+					};
+					if(curr.center.x+dy>=row||curr.center.y-dx<0||
+					curr.center.y-dx>=col)canRotate=false;
+					continue;
+				}
+				//不在缓冲区时
+				//判断是否可右移
+				if(curr.body[i].y+1>=col||vis[curr.body[i].x][curr.body[i].y+1])canRight=false;
+				//判断是否可左移
+				if(curr.body[i].y<=0||vis[curr.body[i].x][curr.body[i].y-1])canLeft=false;
+				//判断是否可下移
+				if(curr.body[i].x+1>=row||vis[curr.body[i].x+1][curr.body[i].y])canDown=false;
+				//判断是否可旋转
+				if(curr.center==undefined){canRotate=false;continue;}
+				var dx=curr.body[i].x-curr.center.x;
+				var dy=curr.body[i].y-curr.center.y;
+				if(curr.reversible!=undefined&&curr.reversible){
+					dy=-dy;dx=-dx;
+				};			
+				if(curr.center.x+dy>=row||curr.center.y-dx<0||curr.center.y-dx>=col||
+					(curr.center.x+dy>=0&&vis[curr.center.x+dy][curr.center.y-dx]))canRotate=false;		
+			};
+		}
+		//判断，消除
+		function clear(){
+			//计算当前实体的上界和下界，只有这之间的行是有可能被消除的行
+			var low=row,high=0;
+			for(var i in curr.body){
+				if(curr.body[i].x>=0&&curr.body[i].x<low)low=curr.body[i].x;
+				if(curr.body[i].x>high)high=curr.body[i].x;
+			}
+			for(var x=low;x<=high;x++){
+				var canClear=true;
+				//判断第x行是否可消除，只要该行有一个格子为被标记，则不可被消除
+				for(var j in vis[x]){
+					if(!vis[x][j]){
+						canClear=false;
+						break;
+					};
+				}
+				//消除第x行
+				if(canClear){	
+					for(var j=0;j<col;j++){
+						paintCell({x:x,y:j,},bColor);
+						vis[x][j]=false;
+					}
+					//从被消除行的上一行到最高行的所有被标记的格子，全部都下降一行
+					for(var k=x-1;k>=highLine;k--){
+						for(var j=0;j<col;j++){
+							if(vis[k][j]){
+								
+								fall({x:k,y:j,});							
+								if(k<row-1)vis[k+1][j]=true;
+								if(k>=0)vis[k][j]=vis[k-1][j];
+							};
+						};				
+					}
+					//删除一行后，最高行下降一行
+					highLine++;
+					//加分
+					addScore();
+				};
+			};
+		}
+		//格子降落
+		//p：下降格子的的点
+		function fall(p){
+			var color=cell[p.x][p.y].css("background-color");
+			paintCell(p,bColor);
+			p.x++;
+			paintCell(p,color);
+		}
+		//提示界面，显示下一个实体
+		function remain(){
+			var td=$("#next").children().children().children()
+			.css("background-color",$("#next").css("background-color"));
+			for(var i in next.body){
+				td.eq((next.body[i].x+4)*4+next.body[i].y-2)
+				.css("background-color",next.color);
+			};
+		}
+		//加分，等级
+		function addScore(){
+			score+=eachScore;
+			$("#score").html(score);
+			if(score%eachLevel==0){
+				time/=2;
+				$("#level").html(++level);
+			}
+		}
+		//定义实体
+		//属性
+			//color 实体颜色
+			//body 实体的各个点
+			//center 实体的中心，用于旋转
+			//reversible 是否可逆
+		var structs=new Array(
+			//正方形 **
+			//		 **
+			{body:new Array({x:-2,y:3},{x:-2,y:4},{x:-3,y:3},{x:-3,y:4}),
+				color:"red",
+				//center:
+			},
+			// *
+			// ***
+			{body:new Array({x:-2,y:3},{x:-2,y:4},{x:-3,y:4},{x:-4,y:4}),
+				color:"blue",
+				center:{x:-2.5,y:3.5}
+			},
+			// ***
+			// *
+			{body:new Array({x:-2,y:4},{x:-2,y:3},{x:-3,y:3},{x:-4,y:3}),
+				color:"#f80",
+				center:{x:-2.5,y:3.5}
+			},
+			// **
+			//  **
+			{body:new Array({x:-2,y:3},{x:-3,y:3},{x:-3,y:4},{x:-4,y:4}),
+				color:"#0ff",
+				center:{x:-2.5,y:3.5},
+				reversible:false
+			},
+			//  **
+			// **
+			{body:new Array({x:-2,y:4},{x:-3,y:4},{x:-3,y:3},{x:-4,y:3}),
+				color:"yellow",
+				center:{x:-2.5,y:3.5},
+				reversible:false
+			},
+			// ****
+			{body:new Array({x:-2,y:2},{x:-2,y:3},{x:-2,y:4},{x:-2,y:5}),
+				color:"#f0f",
+				center:{x:-2.5,y:3.5},
+				reversible:false
+			},
+			//  *
+			// ***
+			{body:new Array({x:-2,y:3},{x:-3,y:3},{x:-4,y:3},{x:-3,y:4}),
+				color:"#0f0",
+				center:{x:-3,y:4}
+			}
+		);
+	</script>
+  </head>  
+  <body>
+    <div id="main">
+    	<div id="game">
+    		<table></table>
+    		<div id="info">
+    			<div style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:10px;">Next</div>
+    			<table id="next"></table>
+    			<div style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:50px;">Level</div>
+    			<div id="level" style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:60px; color:#a6a">1</div> 
+    			<div style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:90px;">Score</div>
+    			<div id="score" style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:100px; color:#3c8">0</div> 	
+    			<div style="position:relative;font-size:20px;font-weight:bold;
+    				text-align:center;top:120px;">Tips</div>	
+    			<div id="tips" style="position:relative;font-size:15px;text-indent:0px;
+    				text-align:center;top:140px; color:#666" >
+    				每500分升一级<br/><br/>
+    				每升一级速度加倍
+    			</div>
+    			<div id="start">start</div>
+    			<div id="stop">stop</div>		
+    		</div>
+    	</div>
+    	<div id="foot"><strong>版本1.0&nbsp;&nbsp;&nbsp;&copy;
+    	1443704625@qq.com&nbsp;&nbsp;&nbsp;@author zhangHongBo</strong></div>
+    </div>
+  </body> 
+</html>
